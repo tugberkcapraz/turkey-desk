@@ -1,0 +1,97 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Turkey Desk - Global News Insights</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@300;400;700&display=swap" rel="stylesheet"><style>body,html{margin:0;padding:0;font-family:Roboto,sans-serif;background-color:#000;color:#fff;height:100%;overflow:hidden}.container{display:flex;flex-direction:column;height:100vh}.turkey-desk{padding:1rem;background:linear-gradient(to bottom,rgba(0,0,0,.8),rgba(0,0,0,.4));text-align:center}h1{font-family:'Playfair Display',serif;font-size:3.5rem;margin-bottom:.5rem;text-shadow:2px 2px 4px rgba(0,0,0,.5);letter-spacing:1px}.highlight{color:#ff4136}p{font-size:1.1rem;max-width:800px;margin:0 auto;line-height:1.6;font-weight:300}#globeViz{flex-grow:1;margin-top:.2rem}#popup{position:fixed;right:20px;top:50%;transform:translateY(-50%);width:300px;max-height:90%;background:rgba(0,0,0,.9);color:#fff;display:none;padding:20px;box-shadow:-2px 0 10px rgba(0,0,0,.5);z-index:1000;text-align:left;overflow-y:auto}#popup img{max-width:100%;border-radius:4px;margin-bottom:15px}#popup a{display:block;margin:-12px 0;color:#fff;text-decoration:none;font-weight:400;transition:color .3s ease;font-size:.9rem;line-height:1.4}#popup a:hover{color:#e0e0e0;text-decoration:underline}#popup button{margin-top:15px;padding:10px 20px;background-color:#ff4136;color:#fff;border:none;border-radius:4px;cursor:pointer;font-family:Roboto,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:1px;transition:background-color .3s ease;width:100%}#popup button:hover{background-color:#e60000}.red-filter{filter:sepia(50%) saturate(202%) hue-rotate(-30deg) brightness(.7) contrast(1.1)}</style><script src="//unpkg.com/react/umd/react.production.min.js"></script><script src="//unpkg.com/react-dom/umd/react-dom.production.min.js"></script><script src="//unpkg.com/@babel/standalone"></script><script src="//unpkg.com/d3"></script><script src="//unpkg.com/react-globe.gl"></script><script defer="defer" src="/turkey-desk/static/js/main.95fdf833.js"></script><link href="/turkey-desk/static/css/main.e6c13ad2.css" rel="stylesheet"></head><body><div class="container"><div class="turkey-desk"><h1><span class="highlight">Türkiye</span> Masası</h1><p>Dünya basınında Türkiye ile ilgili yayınlanmış olan haberleri keşfedin.</p></div><div id="globeViz"></div><div id="popup"></div></div><script type="text/jsx">const { useState, useEffect } = React;
+
+      const World = () => {
+        const [countries, setCountries] = useState({ features: [] });
+        const [popupContent, setPopupContent] = useState('');
+        const [popupVisible, setPopupVisible] = useState(false);
+        const [dataFetched, setDataFetched] = useState(false); // New state for caching
+
+        // Define colorScale outside useEffect
+        const colorScale = d3.scaleSequential(d3.interpolateBlues);
+
+        useEffect(() => {
+          if (!dataFetched) { // Check if data has already been fetched
+            const fetchGdeltData = fetch('https://api.gdeltproject.org/api/v2/geo/geo?zoomwheel=0&query=(Turkish%20OR%20turk%20OR%20turks)%20Erdogan%20%20-sourcecountry:TU%20-sourcelang:tur&mode=sourcecountry&format=geojson')
+              .then(res => res.json());
+
+            Promise.all([fetchGdeltData]).then(([gdeltData]) => {
+              // Convert value property to number and multiply by 1000
+              const updatedGdeltData = {
+                ...gdeltData,
+                features: gdeltData.features.map(feature => {
+                  const originalValue = parseFloat(feature.properties.value) || 0; // Convert to number, default to 0
+                  const adjustedValue = originalValue > 0 ? originalValue * 1000 : 0.001; // Multiply by 1000, treat 0 as 0.001
+                  return {
+                    ...feature,
+                    properties: {
+                      ...feature.properties,
+                      value: adjustedValue // Set adjusted value
+                    }
+                  };
+                })
+              };
+
+              // Set countries with updated data
+              setCountries(updatedGdeltData);
+              setDataFetched(true); // Mark data as fetched
+
+              // Find the maximum value in the updated GDELT data
+              const maxValue = updatedGdeltData.features.reduce((max, feature) => {
+                return Math.max(max, feature.properties.value);
+              }, 0);
+
+              // Update the color scale domain based on the maximum value
+              colorScale.domain([0, maxValue > 0 ? maxValue : 1]); // Ensure maxValue is at least 1
+            });
+          }
+        }, [dataFetched]); // Dependency array includes dataFetched
+
+        const handlePolygonClick = (polygon) => {
+          const value = polygon.properties.value > 0 ? polygon.properties.value : 0; // Treat net 0 as 0
+          if (value >= 0) {
+            const htmlContent = polygon.properties.html;
+            const imageUrl = polygon.properties.shareimage || 'https://islam-today.ru/files/news/part_15/153561/preview-440x301.jpg'; // Fallback image
+            setPopupContent(`
+              <img 
+                src="${imageUrl}" 
+                alt="Share Image" 
+                class="${imageUrl !== 'https://islam-today.ru/files/news/part_15/153561/preview-440x301.jpg' ? 'red-filter' : ''}"
+                onError="this.onerror=null; this.src='https://islam-today.ru/files/news/part_15/153561/preview-440x301.jpg'; this.className='';"
+              />
+              ${htmlContent}
+            `);
+            setPopupVisible(true);
+          }
+        };
+
+        return (
+          <>
+            <Globe
+              globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
+              backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+              hexPolygonsData={countries.features}
+              hexPolygonResolution={3}
+              hexPolygonMargin={0.001} // Reduced margin for smaller gaps
+              hexPolygonUseDots={true}
+              hexPolygonColor={d => {
+                const value = d.properties.value > 0 ? d.properties.value : 0; // Treat net 0 as 0
+                return colorScale(value);
+              }}
+              hexPolygonLabel={null} // Disable hover label
+              onHexPolygonClick={handlePolygonClick}
+              polygonsTransitionDuration={300}
+            />
+            {popupVisible && (
+              <div id="popup" style={{ display: 'block' }}>
+                <div dangerouslySetInnerHTML={{ __html: popupContent }} />
+                <button onClick={() => setPopupVisible(false)}>Kapat</button> {/* Renamed button */}
+              </div>
+            )}
+          </>
+        );
+      };
+
+      ReactDOM.render(
+        <World />,
+        document.getElementById('globeViz')
+      );</script><noscript>You need to enable JavaScript to run this app.</noscript></body></html>
